@@ -33,6 +33,33 @@ idtinit(void)
 }
 
 //PAGEBREAK: 41
+
+extern pte_t *walkpgdir(pde_t *, const void *, int);
+
+void
+printcrashinfo(struct trapframe *tf)
+{
+  cprintf("eax:0x%x\n", tf->eax);
+  cprintf("ebx:0x%x\n", tf->ebx);
+  cprintf("ecx:0x%x\n", tf->ecx);
+  cprintf("edx:0x%x\n", tf->edx);
+  cprintf("esi:0x%x\n", tf->esi);
+  cprintf("edi:0x%x\n", tf->edi);
+  cprintf("esp:0x%x\n", tf->esp);
+  cprintf("ebp:0x%x\n", tf->ebp);
+  cprintf("eip:0x%x\n", tf->edi);
+  uint returna;
+  uint ebp = tf->ebp;
+  int i;
+  for (i = 0; ; i++) {
+    returna = *((uint *)(ebp + 4));
+    cprintf("#%d\t0x%x\n", i, returna);
+    if (returna == 0xffffffff)
+      break;
+    ebp = *((uint *)ebp);
+  }
+}
+
 void
 trap(struct trapframe *tf)
 {
@@ -91,6 +118,20 @@ trap(struct trapframe *tf)
             "eip 0x%x addr 0x%x--kill proc\n",
             myproc()->pid, myproc()->name, tf->trapno,
             tf->err, cpuid(), tf->eip, rcr2());
+
+    // check if it is caused by violation of the page protection
+    if (tf->err == 7) {
+      uint va = rcr2();
+      pte_t *pte = walkpgdir(myproc()->pgdir, (void *)va, 0);
+      if (pte != 0 && (*pte & PTE_W) == 0) {
+        cprintf("Program is trying to access address 0x%x "
+                "in a write protected page at: 0x%x\n",
+                va, PGROUNDDOWN(va));
+      }
+    }
+
+    printcrashinfo(tf);
+
     myproc()->killed = 1;
   }
 
