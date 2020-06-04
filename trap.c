@@ -119,6 +119,9 @@ trap(struct trapframe *tf)
             myproc()->pid, myproc()->name, tf->trapno,
             tf->err, cpuid(), tf->eip, rcr2());
 
+    // print crash info: user registers and calling stack
+    printcrashinfo(tf);
+
     // check if it is caused by violation of the page protection
     if (tf->err == 7) {
       uint va = rcr2();
@@ -126,13 +129,17 @@ trap(struct trapframe *tf)
       if (pte != 0 && (*pte & PTE_W) == 0) {
         cprintf("Program is trying to access address 0x%x "
                 "in a write protected page at: 0x%x\n",
-                va, PGROUNDDOWN(va));
+                va, tf->eip);
+        // unprotect the page and continue the program
+        *pte = *pte | PTE_W;
+        lcr3(V2P(myproc()->pgdir));
+        cprintf("Unprotect the page and let program run.\n");
       }
     }
-
-    printcrashinfo(tf);
-
-    myproc()->killed = 1;
+    else
+    {
+      myproc()->killed = 1;
+    }
   }
 
   // Force process exit if it has been killed and is in user space.
